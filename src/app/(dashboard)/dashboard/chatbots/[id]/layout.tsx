@@ -3,8 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { BotIcon, ChevronLeftIcon, GlobeIcon, DatabaseIcon, Settings2Icon, MessageSquareIcon } from "lucide-react";
+import { BotIcon, ChevronLeftIcon } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import ChatbotSubnav from "@/components/dashboard/chatbot-subnav";
 
 export default async function ChatbotLayout({
   children,
@@ -78,37 +79,7 @@ export default async function ChatbotLayout({
           <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 mt-2">
             Configure {chatbot.name}
           </h3>
-          <Link
-            href={`/dashboard/chatbots/${id}`}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground hover:font-semibold"
-          >
-            <Settings2Icon className="w-4 h-4" />
-            Settings
-          </Link>
-          
-          <Link
-            href={`/dashboard/chatbots/${id}/knowledge`}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground hover:font-semibold"
-          >
-            <DatabaseIcon className="w-4 h-4" />
-            Knowledge Base
-          </Link>
-          
-          <Link
-            href={`/dashboard/chatbots/${id}/preview`}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground hover:font-semibold"
-          >
-            <MessageSquareIcon className="w-4 h-4" />
-            Test Chat
-          </Link>
-
-          <Link
-            href={`/dashboard/chatbots/${id}/integration`}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground hover:font-semibold"
-          >
-            <GlobeIcon className="w-4 h-4" />
-            Integration
-          </Link>
+          <ChatbotSubnav chatbotId={id} />
         </div>
 
         {/* Dynamic Content */}

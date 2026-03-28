@@ -154,7 +154,7 @@ model KnowledgeBase {
 model KnowledgeChunk {
   id              String                       @id @default(cuid())
   content         String                       @db.Text
-  embedding       Unsupported("vector(1536)")?
+  embedding       Unsupported("vector(3072)")?
   knowledgeBaseId String
   createdAt       DateTime                     @default(now())
 

@@ -1,0 +1,10 @@
+
+> bai-chat@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.16.0.2:3001
+- Environments: .env.local, .env
+✓ Ready in 959ms
+[?25h

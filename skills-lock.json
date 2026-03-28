@@ -46,6 +46,11 @@
       "sourceType": "github",
       "computedHash": "37226d4220d844377e6b2a386c51a011df4cd130855ff0b80bcc22f9c28abd57"
     },
+    "pdf-parser": {
+      "source": "jeremylongshore/claude-code-plugins-plus-skills",
+      "sourceType": "github",
+      "computedHash": "3fe1f63fea7d3ac1c4902843c753d7917832c67825e1bdef14727431e2b4bdfa"
+    },
     "prisma-database-setup": {
       "source": "prisma/skills",
       "sourceType": "github",
