@@ -11,6 +11,16 @@
       "sourceType": "github",
       "computedHash": "afdf97aa7adae2b9a42389ddb67e7418611bbd3d23604cad96c0f3ca194ab14a"
     },
+    "better-auth-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "9ab075b5061be2a5f299c10505667345cc1ec76e8de4120901cfd586643e776f"
+    },
+    "inngest": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "5f4fa5cfc80041d8fcd9fc29ba8fc050c972c9a009a7d17074e1e49df40e1383"
+    },
     "pdf": {
       "source": "anthropics/skills",
       "sourceType": "github",
