@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { 
+import {
   GlobeIcon,
-  DatabaseIcon, 
-  FileTextIcon, 
-  LinkIcon, 
-  UploadIcon, 
+  DatabaseIcon,
+  FileTextIcon,
+  LinkIcon,
+  UploadIcon,
   Loader2Icon,
   TrashIcon,
   CheckCircle2Icon,
@@ -103,7 +103,7 @@ export default function ChatbotKnowledgePage() {
         formData.append("maxPages", String(maxPages));
         formData.append("selectedPages", JSON.stringify(selectedPages));
       }
-      
+
       if (uploadType === "pdf") {
         if (!file) throw new Error("Please select a PDF file");
         formData.append("file", file);
@@ -129,7 +129,7 @@ export default function ChatbotKnowledgePage() {
       setMaxPages(10);
       setCrawlerPages([]);
       setSelectedPages([]);
-      
+
       // Refresh list
       await fetchKnowledgeBases();
     } catch (err: unknown) {
@@ -236,36 +236,32 @@ export default function ChatbotKnowledgePage() {
                 <button
                   type="button"
                   onClick={() => setUploadType("pdf")}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${
-                    uploadType === "pdf" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
-                  }`}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${uploadType === "pdf" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                    }`}
                 >
                   <FileTextIcon className="w-3.5 h-3.5" /> PDF
                 </button>
                 <button
                   type="button"
                   onClick={() => setUploadType("url")}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${
-                    uploadType === "url" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
-                  }`}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${uploadType === "url" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                    }`}
                 >
                   <LinkIcon className="w-3.5 h-3.5" /> URL
                 </button>
                 <button
                   type="button"
                   onClick={() => setUploadType("text")}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${
-                    uploadType === "text" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
-                  }`}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${uploadType === "text" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                    }`}
                 >
                   <DatabaseIcon className="w-3.5 h-3.5" /> Text
                 </button>
                 <button
                   type="button"
                   onClick={() => setUploadType("web_crawler")}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${
-                    uploadType === "web_crawler" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
-                  }`}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 border rounded-md text-xs font-medium transition-colors ${uploadType === "web_crawler" ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                    }`}
                 >
                   <GlobeIcon className="w-3.5 h-3.5" /> Crawler
                 </button>
@@ -398,7 +394,7 @@ export default function ChatbotKnowledgePage() {
                         <div className="flex w-full flex-col gap-2">
                           {crawlerPages.map((page) => (
                             <Tooltip key={page.url}>
-                              <TooltipTrigger asChild>
+                              <TooltipTrigger>
                                 <label
                                   className="flex w-full items-start gap-3 rounded-md border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted/30"
                                 >
@@ -481,9 +477,9 @@ export default function ChatbotKnowledgePage() {
                   <div className="flex items-center gap-3 overflow-hidden">
                     <div className="w-10 h-10 shrink-0 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
                       {kb.type === "pdf" ? <FileTextIcon className="w-5 h-5" /> :
-                       kb.type === "web_crawler" ? <GlobeIcon className="w-5 h-5" /> :
-                       kb.type === "url" ? <LinkIcon className="w-5 h-5" /> :
-                       <DatabaseIcon className="w-5 h-5" />}
+                        kb.type === "web_crawler" ? <GlobeIcon className="w-5 h-5" /> :
+                          kb.type === "url" ? <LinkIcon className="w-5 h-5" /> :
+                            <DatabaseIcon className="w-5 h-5" />}
                     </div>
                     <div className="overflow-hidden">
                       <h4 className="font-medium text-sm truncate">{kb.name}</h4>
@@ -512,9 +508,9 @@ export default function ChatbotKnowledgePage() {
 
                   <div className="flex items-center gap-2 pl-4">
                     {kb.fileUrl && kb.type === "pdf" && (
-                      <a 
-                        href={kb.fileUrl} 
-                        target="_blank" 
+                      <a
+                        href={kb.fileUrl}
+                        target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:bg-muted transition-colors"
                         title="View PDF"
