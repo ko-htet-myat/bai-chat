@@ -4,30 +4,10 @@ import { openRouter } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { searchKnowledge } from "@/lib/rag";
 import { getPublicChatbotByApiKey, getWidgetCorsHeaders } from "@/lib/widget";
-
-function buildSystemPrompt(chatbot: {
-  name: string;
-  systemPrompt: string | null;
-}, contextText: string) {
-  const hasKnowledgeContext = contextText.trim().length > 0;
-
-  return [
-    `You are an AI assistant for "${chatbot.name}".`,
-    chatbot.systemPrompt?.trim(),
-    hasKnowledgeContext
-      ? [
-          "Use the knowledge base context below as your primary source of truth.",
-          "If the answer is not supported by the provided context, say you do not know based on the knowledge base instead of inventing facts.",
-          "If the provided context includes image URLs and the user asks for images, photos, logos, product pictures, screenshots, or visuals, include the most relevant image using markdown image syntax like `![short alt text](https://example.com/image.jpg)` and also include the direct link.",
-          "If the context contains a `Related images:` section, treat those URLs as available images. Do not say an image is unavailable when a relevant image URL is present in the context.",
-          "",
-          "[KNOWLEDGE BASE CONTEXT]",
-          contextText,
-          "[END KNOWLEDGE BASE CONTEXT]",
-        ].join("\n")
-      : "No relevant knowledge base context was found for this question. Be transparent about that and avoid claiming the knowledge base contains information it does not.",
-  ].filter(Boolean).join("\n\n");
-}
+import {
+  buildChatbotSystemPrompt,
+  generateSuggestedQuestions,
+} from "@/lib/chatbot-response";
 
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
@@ -114,15 +94,23 @@ export async function POST(
 
     const contextResults = await searchKnowledge(chatbot.id, message);
     const contextText = contextResults.map((entry) => entry.content).join("\n\n---\n\n");
-    const prompt = buildSystemPrompt(chatbot, contextText);
+    const prompt = buildChatbotSystemPrompt(chatbot, contextText);
     const historyText = recentMessages
       .map((entry) => `${entry.role === "assistant" ? "Assistant" : "User"}: ${entry.content}`)
       .join("\n");
+    const model = openRouter(chatbot.modelId || "meta-llama/llama-3.3-70b-instruct:free");
 
     const result = await generateText({
-      model: openRouter(chatbot.modelId || "meta-llama/llama-3.3-70b-instruct:free"),
+      model,
       prompt: `${historyText}\nAssistant:`,
       system: prompt,
+    });
+    const suggestedQuestions = await generateSuggestedQuestions({
+      model,
+      chatbot,
+      conversationContext: historyText,
+      userQuestion: message,
+      assistantAnswer: result.text,
     });
 
     const assistantMessage = await prisma.message.create({
@@ -148,6 +136,7 @@ export async function POST(
           id: assistantMessage.id,
           role: "assistant",
           text: assistantMessage.content,
+          suggestedQuestions,
         },
       },
       {

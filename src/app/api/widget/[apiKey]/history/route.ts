@@ -75,3 +75,52 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ apiKey: string }> }
+) {
+  try {
+    const { apiKey } = await params;
+    const chatbot = await getPublicChatbotByApiKey(apiKey);
+
+    if (!chatbot) {
+      return NextResponse.json(
+        { error: "Chatbot not found" },
+        { headers: getWidgetCorsHeaders(req.headers.get("origin")), status: 404 }
+      );
+    }
+
+    const sessionId = req.nextUrl.searchParams.get("sessionId");
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: "sessionId is required" },
+        { headers: getWidgetCorsHeaders(req.headers.get("origin")), status: 400 }
+      );
+    }
+
+    const result = await prisma.conversation.deleteMany({
+      where: {
+        chatbotId: chatbot.id,
+        sessionId,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        deletedCount: result.count,
+        success: true,
+      },
+      {
+        headers: getWidgetCorsHeaders(req.headers.get("origin")),
+      }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json(
+      { error: message },
+      { headers: getWidgetCorsHeaders(req.headers.get("origin")), status: 500 }
+    );
+  }
+}

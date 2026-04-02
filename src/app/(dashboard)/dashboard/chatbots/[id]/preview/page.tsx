@@ -2,20 +2,41 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
-import { ArrowUp, Bot, RefreshCw, Sparkles } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { ArrowUp, Bot, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DefaultChatTransport } from "ai";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  ChatbotUIMessage,
+  extractEmbeddedSuggestedQuestions,
+  getSuggestedQuestionsFromParts,
+  stripSuggestedQuestionsFromAnswer,
+} from "@/lib/chatbot-response";
+import {
+  readSessionStorage,
+  removeSessionStorage,
+  writeSessionStorage,
+} from "@/lib/chat-session-storage";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ChatbotPreviewSettings = {
   name: string;
   welcomeMessage: string | null;
   primaryColor: string | null;
   isActive: boolean;
+  starterQuestions?: string[];
 };
 
 function getMessageText(parts: ReadonlyArray<{ type: string; text?: string }>) {
@@ -25,13 +46,20 @@ function getMessageText(parts: ReadonlyArray<{ type: string; text?: string }>) {
     .join("");
 }
 
+function getPreviewStorageKey(chatbotId: string) {
+  return `bai-chat-preview:${chatbotId}`;
+}
+
 export default function ChatbotTestPage() {
   const { id } = useParams();
   const [input, setInput] = useState("");
   const [chatbot, setChatbot] = useState<ChatbotPreviewSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [hasRestoredMessages, setHasRestoredMessages] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, sendMessage, status, error, regenerate } = useChat({
+  const { messages, sendMessage, setMessages, status, error, regenerate } = useChat<ChatbotUIMessage>({
     transport: new DefaultChatTransport({
       api: `/api/chatbots/${id}/chat`,
     }),
@@ -42,6 +70,52 @@ export default function ChatbotTestPage() {
   const accentColor = chatbot?.primaryColor || "#0ea5e9";
   const welcomeMessage = chatbot?.welcomeMessage?.trim() || "Hi! How can I help you today?";
   const chatbotName = chatbot?.name || "Your Chatbot";
+  const latestAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const latestSuggestedQuestions = latestAssistantMessage
+    ? (() => {
+        const metadataQuestions = getSuggestedQuestionsFromParts(latestAssistantMessage.parts);
+
+        if (metadataQuestions.length > 0) {
+          return metadataQuestions;
+        }
+
+        const assistantText = latestAssistantMessage.parts
+          .filter(
+            (part): part is { type: "text"; text: string } =>
+              part.type === "text" && typeof part.text === "string"
+          )
+          .map((part) => part.text)
+          .join("");
+
+        return extractEmbeddedSuggestedQuestions(assistantText);
+      })()
+    : [];
+  const visibleQuestions =
+    !input.trim() && !isLoading
+      ? latestSuggestedQuestions.length > 0
+        ? latestSuggestedQuestions
+        : messages.length === 0
+          ? chatbot?.starterQuestions ?? []
+          : []
+      : [];
+
+  useEffect(() => {
+    if (typeof id !== "string") {
+      return;
+    }
+
+    const savedMessages = readSessionStorage<ChatbotUIMessage[]>(
+      getPreviewStorageKey(id)
+    );
+
+    if (savedMessages?.length) {
+      setMessages(savedMessages);
+    }
+
+    setHasRestoredMessages(true);
+  }, [id, setMessages]);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,15 +147,42 @@ export default function ChatbotTestPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, status]);
+
+  useEffect(() => {
+    if (!hasRestoredMessages || typeof id !== "string") {
+      return;
+    }
+
+    writeSessionStorage(getPreviewStorageKey(id), messages);
+  }, [hasRestoredMessages, id, messages]);
+
   const handlePromptSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = input.trim();
 
     if (!text || isLoading || chatbot?.isActive === false) return;
     
-    // @ts-expect-error AI SDK UI typing lags the current sendMessage text shorthand.
-    await sendMessage({ text });
     setInput("");
+    await sendMessage({ text });
+  };
+
+  const handleSuggestedQuestionClick = (question: string) => {
+    if (isLoading || chatbot?.isActive === false) return;
+    setInput(question);
+  };
+
+  const handleDeleteHistory = () => {
+    if (typeof id !== "string") {
+      return;
+    }
+
+    removeSessionStorage(getPreviewStorageKey(id));
+    setMessages([]);
+    setInput("");
+    setIsDeleteDialogOpen(false);
   };
 
   return (
@@ -120,6 +221,15 @@ export default function ChatbotTestPage() {
                 <Button
                   variant="outline"
                   size="icon"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  disabled={messages.length === 0}
+                  className="rounded-full border-border/70 bg-background/90 shadow-sm"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
                   onClick={() => regenerate()}
                   disabled={messages.length === 0 || isLoading}
                   className="rounded-full border-border/70 bg-background/90 shadow-sm"
@@ -131,7 +241,7 @@ export default function ChatbotTestPage() {
           </header>
 
           <Conversation className="min-h-0 flex-1 overflow-y-auto">
-            <ConversationContent className="mx-auto flex w-full max-w-5xl flex-1 gap-8 px-4 py-8 pb-10 sm:px-6 sm:py-10 sm:pb-12">
+            <ConversationContent className="mx-auto w-full max-w-5xl px-4 py-6 pb-6 sm:px-6 sm:py-8 sm:pb-8">
               {messages.length === 0 && (
                 <ConversationEmptyState
                   icon={<Bot className="size-12 opacity-20" />}
@@ -155,7 +265,9 @@ export default function ChatbotTestPage() {
                     )}
                   >
                     <MessageResponse>
-                      {getMessageText(m.parts)}
+                      {m.role === "assistant"
+                        ? stripSuggestedQuestionsFromAnswer(getMessageText(m.parts))
+                        : getMessageText(m.parts)}
                     </MessageResponse>
                   </MessageContent>
                 </Message>
@@ -179,12 +291,28 @@ export default function ChatbotTestPage() {
                   {settingsError || error?.message || "Something went wrong. Please check your network or API quota."}
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
 
           <div className="shrink-0 border-t border-border/60 bg-background/80 backdrop-blur-2xl">
             <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-5">
+              {visibleQuestions.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2 px-1">
+                  {visibleQuestions.map((question) => (
+                    <button
+                      key={question}
+                      type="button"
+                      className="rounded-full border border-border/70 bg-background/92 px-3 py-2 text-sm text-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isLoading || chatbot?.isActive === false}
+                      onClick={() => handleSuggestedQuestionClick(question)}
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              )}
               <form
                 className="relative w-full"
                 onSubmit={handlePromptSubmit}
@@ -238,6 +366,31 @@ export default function ChatbotTestPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete preview chat history?</DialogTitle>
+            <DialogDescription>
+              This clears the saved admin preview conversation for this chatbot in
+              the current browser session.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteHistory}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete History
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

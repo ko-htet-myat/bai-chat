@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3Icon,
   DatabaseIcon,
   GlobeIcon,
   MessageSquareIcon,
@@ -29,6 +30,13 @@ const navItems = [
     label: "Knowledge Base",
     match: (pathname: string, chatbotId: string) =>
       pathname === `/dashboard/chatbots/${chatbotId}/knowledge`,
+  },
+  {
+    href: (chatbotId: string) => `/dashboard/chatbots/${chatbotId}/analytics`,
+    icon: BarChart3Icon,
+    label: "Analytics",
+    match: (pathname: string, chatbotId: string) =>
+      pathname === `/dashboard/chatbots/${chatbotId}/analytics`,
   },
   {
     href: (chatbotId: string) => `/dashboard/chatbots/${chatbotId}/preview`,

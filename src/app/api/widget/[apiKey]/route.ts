@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getChatbotStarterQuestions } from "@/lib/chatbot-analytics";
 import { getPublicChatbotByApiKey, getWidgetCorsHeaders } from "@/lib/widget";
 
 export async function OPTIONS(req: NextRequest) {
@@ -23,6 +24,8 @@ export async function GET(
       );
     }
 
+    const starterQuestions = await getChatbotStarterQuestions(chatbot.id);
+
     return NextResponse.json(
       {
         chatbot: {
@@ -31,6 +34,7 @@ export async function GET(
           isActive: chatbot.isActive,
           name: chatbot.name,
           primaryColor: chatbot.primaryColor,
+          starterQuestions,
           welcomeMessage: chatbot.welcomeMessage,
         },
       },

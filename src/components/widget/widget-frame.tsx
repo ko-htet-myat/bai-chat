@@ -1,8 +1,26 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Loader2, MessageSquarePlus, Send, X } from "lucide-react";
+import { Bot, Loader2, MessageSquarePlus, Send, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  readSessionStorage,
+  removeSessionStorage,
+  writeSessionStorage,
+} from "@/lib/chat-session-storage";
+import {
+  extractEmbeddedSuggestedQuestions,
+  stripSuggestedQuestionsFromAnswer,
+} from "@/lib/chatbot-response";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +28,7 @@ type WidgetFrameProps = {
   apiKey: string;
   chatbotName: string;
   initialPrimaryColor: string;
+  initialStarterQuestions: string[];
   initialWelcomeMessage: string;
 };
 
@@ -17,10 +36,15 @@ type WidgetMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  suggestedQuestions?: string[];
 };
 
 function getStorageKey(apiKey: string) {
   return `bai-chat-widget-session:${apiKey}`;
+}
+
+function getConversationStorageKey(apiKey: string) {
+  return `bai-chat-widget-conversation:${apiKey}`;
 }
 
 function generateSessionId() {
@@ -35,6 +59,7 @@ export default function WidgetFrame({
   apiKey,
   chatbotName,
   initialPrimaryColor,
+  initialStarterQuestions,
   initialWelcomeMessage,
 }: WidgetFrameProps) {
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -44,6 +69,9 @@ export default function WidgetFrame({
   const [messages, setMessages] = useState<WidgetMessage[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [hasHydratedConversation, setHasHydratedConversation] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletingHistory, setIsDeletingHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -60,7 +88,21 @@ export default function WidgetFrame({
   }, [apiKey]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    const savedConversation = readSessionStorage<{
+      conversationId: string | null;
+      messages: WidgetMessage[];
+    }>(getConversationStorageKey(apiKey));
+
+    if (savedConversation) {
+      setConversationId(savedConversation.conversationId);
+      setMessages(savedConversation.messages);
+    }
+
+    setHasHydratedConversation(true);
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (!sessionId || !hasHydratedConversation) return;
 
     let cancelled = false;
 
@@ -92,13 +134,40 @@ export default function WidgetFrame({
     return () => {
       cancelled = true;
     };
-  }, [apiKey, sessionId]);
+  }, [apiKey, hasHydratedConversation, sessionId]);
+
+  useEffect(() => {
+    if (!hasHydratedConversation) {
+      return;
+    }
+
+    writeSessionStorage(getConversationStorageKey(apiKey), {
+      conversationId,
+      messages,
+    });
+  }, [apiKey, conversationId, hasHydratedConversation, messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
   const hasMessages = messages.length > 0;
+  const latestAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const latestSuggestedQuestions = latestAssistantMessage
+    ? latestAssistantMessage.suggestedQuestions?.length
+      ? latestAssistantMessage.suggestedQuestions
+      : extractEmbeddedSuggestedQuestions(latestAssistantMessage.text)
+    : [];
+  const visibleQuestions =
+    !input.trim() && !isLoading
+      ? latestSuggestedQuestions.length > 0
+        ? latestSuggestedQuestions
+        : hasMessages
+          ? []
+          : initialStarterQuestions
+      : [];
   const accentStyles = useMemo(
     () => ({
       backgroundColor: initialPrimaryColor,
@@ -111,6 +180,10 @@ export default function WidgetFrame({
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const message = input.trim();
+    await sendMessage(message);
+  };
+
+  const sendMessage = async (message: string) => {
     if (!message || isLoading || !sessionId) return;
 
     const optimisticMessage: WidgetMessage = {
@@ -155,10 +228,56 @@ export default function WidgetFrame({
     }
   };
 
+  const handleSuggestedQuestionClick = (question: string) => {
+    if (isLoading) return;
+    setInput(question);
+  };
+
   const handleNewChat = () => {
+    const nextSessionId = generateSessionId();
+
+    window.localStorage.setItem(getStorageKey(apiKey), nextSessionId);
+    removeSessionStorage(getConversationStorageKey(apiKey));
     setConversationId(null);
     setMessages([]);
     setError(null);
+    setInput("");
+    setSessionId(nextSessionId);
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!sessionId) {
+      return;
+    }
+
+    setIsDeletingHistory(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/widget/${apiKey}/history?sessionId=${encodeURIComponent(sessionId)}`,
+        {
+          method: "DELETE",
+        }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete conversation history");
+      }
+
+      removeSessionStorage(getConversationStorageKey(apiKey));
+      setConversationId(null);
+      setMessages([]);
+      setInput("");
+      setIsDeleteDialogOpen(false);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete conversation history"
+      );
+    } finally {
+      setIsDeletingHistory(false);
+    }
   };
 
   if (!isReady) {
@@ -189,6 +308,15 @@ export default function WidgetFrame({
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-full"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              type="button"
+            >
+              <Trash2 className="size-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -230,16 +358,22 @@ export default function WidgetFrame({
                 message.role === "user" ? "justify-end" : "justify-start"
               )}
             >
-              <div
-                className={cn(
-                  "max-w-[88%] rounded-[1.5rem] px-4 py-3 text-sm shadow-sm",
-                  message.role === "user"
-                    ? "text-white"
-                    : "border border-border/60 bg-background"
-                )}
-                style={message.role === "user" ? accentStyles : undefined}
-              >
-                <MessageResponse>{message.text}</MessageResponse>
+              <div className="flex max-w-[88%] flex-col gap-2">
+                <div
+                  className={cn(
+                    "rounded-[1.5rem] px-4 py-3 text-sm shadow-sm",
+                    message.role === "user"
+                      ? "text-white"
+                      : "border border-border/60 bg-background"
+                  )}
+                  style={message.role === "user" ? accentStyles : undefined}
+                >
+                  <MessageResponse>
+                    {message.role === "assistant"
+                      ? stripSuggestedQuestionsFromAnswer(message.text)
+                      : message.text}
+                  </MessageResponse>
+                </div>
               </div>
             </div>
           ))}
@@ -263,7 +397,23 @@ export default function WidgetFrame({
       </main>
 
       <footer className="border-t border-border/60 bg-background px-4 py-4">
-        <form className="mx-auto flex max-w-2xl items-end gap-3" onSubmit={handleSubmit}>
+        <div className="mx-auto max-w-2xl">
+          {visibleQuestions.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {visibleQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-left text-xs text-foreground shadow-sm transition hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isLoading}
+                  onClick={() => handleSuggestedQuestionClick(question)}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        <form className="flex items-end gap-3" onSubmit={handleSubmit}>
           <textarea
             className="min-h-[52px] flex-1 resize-none rounded-[1.4rem] border border-border/70 bg-background px-4 py-3 text-sm outline-none transition focus:border-primary/40 focus:ring-4 focus:ring-primary/10"
             disabled={isLoading}
@@ -287,7 +437,38 @@ export default function WidgetFrame({
             {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </button>
         </form>
+        </div>
       </footer>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent showCloseButton={!isDeletingHistory}>
+          <DialogHeader>
+            <DialogTitle>Delete chat history?</DialogTitle>
+            <DialogDescription>
+              This will permanently remove all messages stored for this browser
+              session in the current chat.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={isDeletingHistory} />}>
+              Cancel
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isDeletingHistory}
+              onClick={handleDeleteHistory}
+            >
+              {isDeletingHistory ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 size-4" />
+              )}
+              Delete History
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

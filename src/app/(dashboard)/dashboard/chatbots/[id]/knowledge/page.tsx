@@ -19,6 +19,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type KnowledgeBaseItem = {
   id: string;
@@ -42,6 +52,8 @@ export default function ChatbotKnowledgePage() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeBaseItem | null>(null);
+  const [isDeletingKnowledge, setIsDeletingKnowledge] = useState(false);
 
   // Upload Form State
   const [uploadType, setUploadType] = useState<"text" | "pdf" | "url" | "web_crawler">("pdf");
@@ -168,17 +180,28 @@ export default function ChatbotKnowledgePage() {
     );
   };
 
-  const handleDelete = async (kbId: string) => {
-    if (!confirm("Are you sure you want to delete this knowledge source?")) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+
+    setIsDeletingKnowledge(true);
+    setError(null);
+
     try {
-      const res = await fetch(`/api/chatbots/${chatbotId}/knowledge/${kbId}`, {
+      const res = await fetch(`/api/chatbots/${chatbotId}/knowledge/${deleteTarget.id}`, {
         method: "DELETE"
       });
-      if (res.ok) {
-        setKnowledgeBases(prev => prev.filter(k => k.id !== kbId));
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete knowledge source");
       }
-    } catch (e) {
-      console.error(e);
+
+      setKnowledgeBases(prev => prev.filter(k => k.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete knowledge source");
+    } finally {
+      setIsDeletingKnowledge(false);
     }
   };
 
@@ -500,7 +523,7 @@ export default function ChatbotKnowledgePage() {
                       </a>
                     )}
                     <button
-                      onClick={() => handleDelete(kb.id)}
+                      onClick={() => setDeleteTarget(kb)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-md text-destructive hover:bg-destructive/10 transition-colors"
                       title="Delete Source"
                     >
@@ -513,6 +536,37 @@ export default function ChatbotKnowledgePage() {
           )}
         </div>
       </div>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent showCloseButton={!isDeletingKnowledge}>
+          <DialogHeader>
+            <DialogTitle>Delete knowledge source?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `This will permanently remove "${deleteTarget.name}" from the chatbot knowledge base.`
+                : "This will permanently remove this knowledge source from the chatbot knowledge base."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={isDeletingKnowledge} />}>
+              Cancel
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isDeletingKnowledge}
+              onClick={handleDelete}
+            >
+              {isDeletingKnowledge ? (
+                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <TrashIcon className="mr-2 h-4 w-4" />
+              )}
+              Confirm Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

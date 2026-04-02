@@ -5,16 +5,21 @@ import { useParams } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { Send, User, Bot, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import { DefaultChatTransport } from "ai";
+import {
+  ChatbotUIMessage,
+  getSuggestedQuestionsFromParts,
+  stripSuggestedQuestionsFromAnswer,
+} from "@/lib/chatbot-response";
 
 export default function ChatbotTestPage() {
   const { id } = useParams();
-  const [mounted, setMounted] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, sendMessage, status, error, regenerate } = useChat({
+  const { messages, sendMessage, status, error, regenerate } = useChat<ChatbotUIMessage>({
     transport: new DefaultChatTransport({
       api: `/api/chatbots/${id}/chat`,
     }),
@@ -22,19 +27,19 @@ export default function ChatbotTestPage() {
   });
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const isLoading = status === "streaming" || status === "submitted";
+  const latestSuggestedQuestions = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && getSuggestedQuestionsFromParts(message.parts).length > 0);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return;
-    await sendMessage({ text: inputValue });
+    const text = inputValue.trim();
+    if (!text || isLoading) return;
     setInputValue("");
+    await sendMessage({ text });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -44,24 +49,19 @@ export default function ChatbotTestPage() {
     }
   };
 
-  const getMessageText = (msg: any) => {
-    if (typeof msg.content === "string") return msg.content;
-    if (Array.isArray(msg.content)) {
-      return msg.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("");
-    }
-    if (msg.parts) {
-      return msg.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("");
-    }
-    return "";
+  const handleSuggestedQuestionClick = (question: string) => {
+    if (isLoading) return;
+    setInputValue(question);
   };
 
-  if (!mounted) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const getMessageText = (message: ChatbotUIMessage) =>
+    message.parts
+      .filter(
+        (part): part is Extract<ChatbotUIMessage["parts"][number], { type: "text"; text: string }> =>
+          part.type === "text" && typeof part.text === "string"
+      )
+      .map((part) => part.text)
+      .join("");
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -118,9 +118,19 @@ export default function ChatbotTestPage() {
                   "px-3 py-2 rounded-2xl text-sm inline-block",
                   m.role === "user"
                     ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "rounded-bl-sm"
+                    : "rounded-bl-sm border border-border/60 bg-background/80"
                 )}>
-                  {getMessageText(m)}
+                  <MessageResponse
+                    className={cn(
+                      "leading-6",
+                      m.role === "user" &&
+                        "[&_a]:text-inherit [&_a]:decoration-primary-foreground/60 [&_blockquote]:border-primary-foreground/25 [&_code]:bg-primary-foreground/12 [&_pre]:border-primary-foreground/15 [&_pre]:bg-primary-foreground/10"
+                    )}
+                  >
+                    {m.role === "assistant"
+                      ? stripSuggestedQuestionsFromAnswer(getMessageText(m))
+                      : getMessageText(m)}
+                  </MessageResponse>
                 </div>
               </div>
             </div>
@@ -156,6 +166,21 @@ export default function ChatbotTestPage() {
       {/* Bottom Input */}
       <footer className="px-4 py-3 border-t border-border/50">
         <div className="max-w-3xl mx-auto">
+          {latestSuggestedQuestions && !inputValue.trim() && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {getSuggestedQuestionsFromParts(latestSuggestedQuestions.parts).map((question) => (
+                <button
+                  key={`${latestSuggestedQuestions.id}-${question}`}
+                  type="button"
+                  className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-left text-xs text-foreground transition hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isLoading}
+                  onClick={() => handleSuggestedQuestionClick(question)}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2 items-center">
             <textarea
               value={inputValue}

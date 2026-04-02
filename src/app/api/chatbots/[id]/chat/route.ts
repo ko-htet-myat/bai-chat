@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { convertToModelMessages, streamText, UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  streamText,
+} from "ai";
 import { openRouter } from "@/lib/ai";
 import { searchKnowledge } from "@/lib/rag";
+import {
+  buildChatbotSystemPrompt,
+  ChatbotUIMessage,
+  generateSuggestedQuestions,
+} from "@/lib/chatbot-response";
 
 export const maxDuration = 30;
 
@@ -17,7 +27,7 @@ export async function POST(
 
     const { id: chatbotId } = await params;
     const body = await req.json();
-    const messages = (body.messages ?? []) as UIMessage[];
+    const messages = (body.messages ?? []) as ChatbotUIMessage[];
 
     if (messages.length === 0) {
       return NextResponse.json({ error: "Messages are required" }, { status: 400 });
@@ -53,34 +63,47 @@ export async function POST(
 
     const contextResults = await searchKnowledge(chatbotId, query);
     const contextText = contextResults.map((c) => c.content).join("\n\n---\n\n");
-    const hasKnowledgeContext = contextText.trim().length > 0;
+    const model = openRouter(chatbot.modelId || "meta-llama/llama-3.3-70b-instruct:free");
+    const conversationContext = messages
+      .slice(-6)
+      .map((message) => {
+        const text = message.parts
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
 
-    // 3. Build system prompt
-    const systemSections = [
-      `You are an AI assistant for "${chatbot.name}".`,
-      chatbot.systemPrompt?.trim(),
-      hasKnowledgeContext
-        ? [
-            "Use the knowledge base context below as your primary source of truth.",
-            "If the answer is not supported by the provided context, say you do not know based on the knowledge base instead of inventing facts.",
-            "If the provided context includes image URLs and the user asks for images, photos, logos, product pictures, screenshots, or visuals, include the most relevant image using markdown image syntax like `![short alt text](https://example.com/image.jpg)` and also include the direct link.",
-            "If the context contains a `Related images:` section, treat those URLs as available images. Do not say an image is unavailable when a relevant image URL is present in the context.",
-            "",
-            "[KNOWLEDGE BASE CONTEXT]",
-            contextText,
-            "[END KNOWLEDGE BASE CONTEXT]",
-          ].join("\n")
-        : "No relevant knowledge base context was found for this question. Be transparent about that and avoid claiming the knowledge base contains information it does not.",
-    ].filter(Boolean);
+        return `${message.role === "assistant" ? "Assistant" : "User"}: ${text}`;
+      })
+      .join("\n");
 
-    // 5. Stream response using OpenRouter
-    const result = streamText({
-      model: openRouter(chatbot.modelId || "meta-llama/llama-3.3-70b-instruct:free"),
-      system: systemSections.join("\n\n"),
-      messages: await convertToModelMessages(messages),
+    const stream = createUIMessageStream<ChatbotUIMessage>({
+      originalMessages: messages,
+      execute: async ({ writer }) => {
+        const result = streamText({
+          model,
+          system: buildChatbotSystemPrompt(chatbot, contextText),
+          messages: await convertToModelMessages(messages),
+          onFinish: async ({ text }) => {
+            const questions = await generateSuggestedQuestions({
+              model,
+              chatbot,
+              conversationContext,
+              userQuestion: query,
+              assistantAnswer: text,
+            });
+
+            writer.write({
+              type: "data-suggestedQuestions",
+              data: { questions },
+            });
+          },
+        });
+
+        writer.merge(result.toUIMessageStream());
+      },
     });
 
-    return result.toUIMessageStreamResponse();
+    return createUIMessageStreamResponse({ stream });
   } catch (error: unknown) {
     console.error("[CHAT_ERROR]", error);
     const message = error instanceof Error ? error.message : "Internal Server Error";

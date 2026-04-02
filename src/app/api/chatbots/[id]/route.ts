@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getChatbotStarterQuestions } from "@/lib/chatbot-analytics";
 import { prisma } from "@/lib/db";
 
 // GET /api/chatbots/[id]
@@ -43,7 +44,14 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    return NextResponse.json({ chatbot });
+    const starterQuestions = await getChatbotStarterQuestions(chatbot.id);
+
+    return NextResponse.json({
+      chatbot: {
+        ...chatbot,
+        starterQuestions,
+      },
+    });
   } catch (error) {
     console.error(`[CHATBOTS_GET]`, error);
     return NextResponse.json(

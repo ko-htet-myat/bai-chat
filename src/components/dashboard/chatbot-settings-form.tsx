@@ -4,11 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2Icon, TrashIcon } from "lucide-react";
 import { Chatbot } from "@prisma/client";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export default function ChatbotSettingsForm({ chatbot }: { chatbot: Chatbot }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -49,17 +61,17 @@ export default function ChatbotSettingsForm({ chatbot }: { chatbot: Chatbot }) {
 
       setSuccess("Chatbot updated successfully!");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update chatbot");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this chatbot? This action cannot be undone.")) return;
-    
     setIsDeleting(true);
+    setError(null);
+
     try {
       const res = await fetch(`/api/chatbots/${chatbot.id}`, {
         method: "DELETE",
@@ -70,10 +82,11 @@ export default function ChatbotSettingsForm({ chatbot }: { chatbot: Chatbot }) {
         throw new Error(data.error || "Failed to delete chatbot");
       }
 
+      setIsDeleteDialogOpen(false);
       router.push("/dashboard/chatbots");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete chatbot");
       setIsDeleting(false);
     }
   };
@@ -223,15 +236,46 @@ export default function ChatbotSettingsForm({ chatbot }: { chatbot: Chatbot }) {
         <p className="text-sm text-muted-foreground mb-4">
           Permanently delete this chatbot and all of its conversations, settings, and attached knowledge bases.
         </p>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="inline-flex h-10 items-center justify-center rounded-md bg-destructive px-6 py-2 text-sm font-medium text-destructive-foreground ring-offset-background transition-colors hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-        >
-          {isDeleting ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : <TrashIcon className="mr-2 h-4 w-4" />}
-          Delete Chatbot
-        </button>
+        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-destructive px-6 py-2 text-sm font-medium text-destructive-foreground ring-offset-background transition-colors hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+              />
+            }
+          >
+            <TrashIcon className="mr-2 h-4 w-4" />
+            Delete Chatbot
+          </DialogTrigger>
+          <DialogContent showCloseButton={!isDeleting}>
+            <DialogHeader>
+              <DialogTitle>Delete chatbot?</DialogTitle>
+              <DialogDescription>
+                This will permanently delete {chatbot.name}, all connected conversations,
+                settings, and knowledge sources. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" disabled={isDeleting} />}>
+                Cancel
+              </DialogClose>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isDeleting}
+                onClick={handleDelete}
+              >
+                {isDeleting ? (
+                  <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <TrashIcon className="mr-2 h-4 w-4" />
+                )}
+                Confirm Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
